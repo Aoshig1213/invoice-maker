@@ -1,69 +1,60 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
+import { getDb } from "@/lib/db";
+import { KIND_LABEL, STATUS_LABEL, listDocuments, type Kind, type Status } from "@/lib/repo";
+import { yen } from "@/lib/tax";
 
-export default function Home() {
+export default async function DocumentsPage({ searchParams }: PageProps<"/">) {
+  const sp = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+  const q = one(sp.q), kind = one(sp.kind) as Kind | "", status = one(sp.status) as Status | "";
+  const docs = listDocuments(getDb(), { q, kind: kind in KIND_LABEL ? kind : "", status: status in STATUS_LABEL ? status : "" });
+  const unpaid = docs.filter((d) => d.kind === "invoice" && d.status === "issued").reduce((s, d) => s + d.totals.total, 0);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <>
+      <div className="row" style={{ marginBottom: 16 }}>
+        <h1 style={{ margin: 0 }}>書類一覧</h1>
+        <div className="spacer" />
+        <Link className="btn" href="/documents/new?kind=quote">＋ 見積書を作る</Link>
+        <Link className="btn primary" href="/documents/new?kind=invoice">＋ 請求書を作る</Link>
+      </div>
+
+      <form className="row card" style={{ padding: 12, marginBottom: 16 }}>
+        <input name="q" defaultValue={q} placeholder="番号・件名・取引先で探す" style={{ maxWidth: 320 }} />
+        <select name="kind" defaultValue={kind} style={{ width: 130 }}>
+          <option value="">すべての種類</option><option value="quote">見積書</option><option value="invoice">請求書</option>
+        </select>
+        <select name="status" defaultValue={status} style={{ width: 140 }}>
+          <option value="">すべての状態</option><option value="draft">下書き</option><option value="issued">発行済み</option><option value="paid">入金済み</option>
+        </select>
+        <button className="btn">絞り込む</button>
+        {(q || kind || status) && <Link href="/">条件を消す</Link>}
+        <div className="spacer" />
+        <span className="muted">入金待ちの請求 <b style={{ color: "var(--ink)" }}>{yen(unpaid)}</b></span>
+      </form>
+
+      {docs.length === 0 ? (
+        <div className="card muted">書類はまだありません。右上のボタンから作れます。</div>
+      ) : (
+        <table className="list">
+          <thead>
+            <tr><th>種類</th><th>番号</th><th>発行日</th><th>取引先</th><th>件名</th><th className="num">合計（税込）</th><th>状態</th></tr>
+          </thead>
+          <tbody>
+            {docs.map((d) => (
+              <tr key={d.id}>
+                <td><span className={`badge ${d.kind}`}>{KIND_LABEL[d.kind]}</span></td>
+                <td><Link href={`/documents/${d.id}`}>{d.number}</Link></td>
+                <td>{d.issueDate}</td>
+                <td>{d.clientName}</td>
+                <td>{d.subject}</td>
+                <td className="num">{yen(d.totals.total)}</td>
+                <td><span className={`badge ${d.status}`}>{STATUS_LABEL[d.status]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
